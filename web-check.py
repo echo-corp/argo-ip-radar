@@ -1,0 +1,179 @@
+import ipaddress
+import json
+import os
+import signal
+import socket
+import ssl
+import sys
+import threading
+import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+from datetime import datetime
+
+# --- Configuration ---
+IPS_FILE = "ips.txt"
+SUBNETS_FILE = "subnets.json"  # Your new "brain" file
+PROGRESS_FILE = ".session_progress.txt"
+ID_FILE = ".file_id.txt"
+SNI_HOST = "cloudflare.com"
+HTTP_HOST = "cloudflare.com"
+MAX_THREADS = 10
+
+# --- Colors ---
+GREEN, RED, CYAN, YELLOW, RESET = "\033[92m", "\033[91m", "\033[96m", "\033[93m", "\033[0m"
+
+# --- Global State ---
+stop_requested = False
+lock = threading.Lock()
+checked_count = 0
+total_ips = 0
+latencies = deque(maxlen=15)
+# Buffer for weights to avoid constant disk writes
+local_weights = {}
+
+shared_context = ssl.create_default_context()
+shared_context.check_hostname = False
+shared_context.verify_mode = ssl.CERT_NONE
+
+
+def save_weights_to_disk():
+    """Writes the final memory-buffered weights back to subnets.json."""
+    if not local_weights: return
+    with lock:
+        try:
+            print(f"\n{YELLOW}[!] Saving updated subnet weights to {SUBNETS_FILE}...{RESET}")
+            with open(SUBNETS_FILE, "w") as f:
+                json.dump(local_weights, f, indent=2)
+        except Exception as e:
+            print(f"{RED}Error saving weights: {e}{RESET}")
+
+
+def signal_handler(sig, frame):
+    global stop_requested
+    stop_requested = True
+    # Final save on interrupt
+    save_weights_to_disk()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, signal_handler)
+
+
+def get_adaptive_timeout():
+    with lock:
+        if not latencies: return 2.5
+        sorted_lat = sorted(list(latencies))
+        median = sorted_lat[len(sorted_lat) // 2]
+        return max(0.6, min(2.5, (median / 1000) * 1.5))
+
+
+def check_ip(ip: str, out_handle, prog_handle):
+    global checked_count
+    if stop_requested: return
+
+    timeout = get_adaptive_timeout()
+    start_time = time.time()
+    success, speed_kbps, ttlb = False, 0.0, 0.0  # Initialized as floats
+
+    try:
+        with closing(socket.create_connection((ip, 443), timeout=timeout)) as sock:
+            with shared_context.wrap_socket(sock, server_hostname=SNI_HOST) as tls:
+                req = f"GET /cdn-cgi/trace HTTP/1.1\r\nHost: {HTTP_HOST}\r\nConnection: close\r\n\r\n"
+                tls.sendall(req.encode())
+
+                resp_data = b""
+                while True:
+                    chunk = tls.recv(1024)
+                    if not chunk: break
+                    resp_data += chunk
+
+                if resp_data:
+                    success = True
+                    end_time = time.time()
+                    ttlb = (end_time - start_time) * 1000.0
+                    content_size = len(resp_data)
+                    duration = max(0.001, end_time - start_time)
+
+                    # Calculate speed as a high-precision float
+                    speed_kbps = (content_size * 8.0) / duration / 1024.0
+
+                    with lock:
+                        latencies.append(ttlb)
+    except:
+        pass
+
+    with lock:
+        checked_count += 1
+        # Update subnet weights in memory
+        for cidr in local_weights:
+            if ipaddress.ip_address(ip) in ipaddress.ip_network(cidr):
+                if success:
+                    local_weights[cidr] = round(local_weights[cidr] + (speed_kbps / 100.0), 3)
+                else:
+                    local_weights[cidr] = round(max(0.1, local_weights[cidr] * 0.9), 3)
+                break
+
+        percent = (checked_count / total_ips) * 100.0
+        color = GREEN if success else RED
+        status = "WORKS" if success else "BLOCK"
+
+        # Display: Changed :>4.0f to :>6.2f for float precision on screen
+        print(
+            f"{color}[{status}] {ip:<15} | {percent:>5.1f}% | T: {timeout:.2f}s | {ttlb:>6.1f}ms | {speed_kbps:>6.2f}kbps{RESET}")
+
+        prog_handle.write(f"{ip}\n")
+        prog_handle.flush()
+        if success:
+            # Saving: Storing as float in the text file for the sorter
+            out_handle.write(f"{ip} | {ttlb:.1f}ms | {speed_kbps:.2f}kbps\n")
+            out_handle.flush()
+
+
+def main():
+    global total_ips, checked_count, local_weights
+
+    # Load subnets into memory at start
+    try:
+        with open(SUBNETS_FILE, "r") as f:
+            local_weights = json.load(f)
+    except FileNotFoundError:
+        print(f"{RED}Error: {SUBNETS_FILE} not found!{RESET}")
+        return
+
+    try:
+        f_stats = os.stat(IPS_FILE)
+        current_id = f"{f_stats.st_size}_{f_stats.st_mtime}"
+        all_ips = [line.strip() for line in open(IPS_FILE) if line.strip()]
+        total_ips = len(all_ips)
+    except FileNotFoundError:
+        return
+
+    # (Previous Session Logic Here...)
+    last_id = open(ID_FILE, "r").read().strip() if os.path.exists(ID_FILE) else ""
+    if current_id != last_id:
+        if os.path.exists(PROGRESS_FILE): os.remove(PROGRESS_FILE)
+        with open(ID_FILE, "w") as f:
+            f.write(current_id)
+        checked_ips = set()
+    else:
+        checked_ips = set(line.strip() for line in open(PROGRESS_FILE) if line.strip()) if os.path.exists(
+            PROGRESS_FILE) else set()
+
+    remaining_ips = [ip for ip in all_ips if ip not in checked_ips]
+    checked_count = total_ips - len(remaining_ips)
+
+    output_path = f"working_{datetime.now().strftime('%H-%M')}.txt"
+    with open(output_path, "a") as out_h, open(PROGRESS_FILE, "a") as prog_h:
+        with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+            for ip in remaining_ips:
+                if stop_requested: break
+                executor.submit(check_ip, ip, out_h, prog_h)
+
+    # Final save after completion
+    save_weights_to_disk()
+
+
+if __name__ == "__main__":
+    main()
