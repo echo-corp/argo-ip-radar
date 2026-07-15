@@ -2,6 +2,7 @@ import ipaddress
 import json
 import os
 import signal
+import shutil
 import socket
 import ssl
 import sys
@@ -20,18 +21,31 @@ ID_FILE = ".file_id.txt"
 SNI_HOST = "cloudflare.com"
 HTTP_HOST = "cloudflare.com"
 MAX_THREADS = 10
+RECENT_RESULTS_LIMIT = 12
 
 # --- Colors ---
 GREEN, RED, CYAN, YELLOW, RESET = "\033[92m", "\033[91m", "\033[96m", "\033[93m", "\033[0m"
+BOLD, DIM, CLEAR_SCREEN, CURSOR_HOME, HIDE_CURSOR, SHOW_CURSOR = (
+    "\033[1m",
+    "\033[2m",
+    "\033[2J",
+    "\033[H",
+    "\033[?25l",
+    "\033[?25h",
+)
 
 # --- Global State ---
 stop_requested = False
 lock = threading.Lock()
 checked_count = 0
 total_ips = 0
+success_count = 0
+block_count = 0
 latencies = deque(maxlen=15)
+recent_results = deque(maxlen=RECENT_RESULTS_LIMIT)
 # Buffer for weights to avoid constant disk writes
 local_weights = {}
+parsed_subnets = []
 
 shared_context = ssl.create_default_context()
 shared_context.check_hostname = False
@@ -43,7 +57,7 @@ def save_weights_to_disk():
     if not local_weights: return
     with lock:
         try:
-            print(f"\n{YELLOW}[!] Saving updated subnet weights to {SUBNETS_FILE}...{RESET}")
+            print(f"{SHOW_CURSOR}\n{YELLOW}[!] Saving updated subnet weights to {SUBNETS_FILE}...{RESET}")
             with open(SUBNETS_FILE, "w") as f:
                 json.dump(local_weights, f, indent=2)
         except Exception as e:
@@ -69,8 +83,62 @@ def get_adaptive_timeout():
         return max(0.6, min(2.5, (median / 1000) * 1.5))
 
 
-def check_ip(ip: str, out_handle, prog_handle):
-    global checked_count
+def format_bar(complete, total, width):
+    if total <= 0:
+        filled = 0
+    else:
+        filled = int((complete / total) * width)
+    filled = max(0, min(width, filled))
+    return "#" * filled + "-" * (width - filled)
+
+
+def render_dashboard_locked(output_path):
+    """Render an in-place terminal dashboard. Caller must hold lock."""
+    percent = (checked_count / total_ips) * 100.0 if total_ips else 0.0
+    terminal_width = shutil.get_terminal_size((100, 24)).columns
+    bar_width = max(20, min(50, terminal_width - 34))
+    bar = format_bar(checked_count, total_ips, bar_width)
+    timeout = get_adaptive_timeout_unlocked()
+
+    top_speeds = [item["speed"] for item in recent_results if item["success"]]
+    latest_speed = top_speeds[-1] if top_speeds else 0.0
+    latest_latency = next((item["ttlb"] for item in reversed(recent_results) if item["success"]), 0.0)
+
+    lines = [
+        f"{BOLD}{CYAN}argo-ip-radar{RESET}  {DIM}Ctrl+C saves subnet weights and exits{RESET}",
+        "",
+        f"Progress  [{bar}] {checked_count}/{total_ips} ({percent:5.1f}%)",
+        f"Working   {GREEN}{success_count}{RESET}   Blocked {RED}{block_count}{RESET}   Timeout {timeout:.2f}s",
+        f"Latest    {latest_latency:6.1f}ms   {latest_speed:6.2f}kbps   Output {output_path}",
+        "",
+        f"{BOLD}Recent results{RESET}",
+    ]
+
+    if recent_results:
+        for item in reversed(recent_results):
+            color = GREEN if item["success"] else RED
+            status = "WORKS" if item["success"] else "BLOCK"
+            lines.append(
+                f"{color}[{status}] {item['ip']:<15}{RESET} "
+                f"{item['ttlb']:>7.1f}ms  {item['speed']:>7.2f}kbps"
+            )
+    else:
+        lines.append(f"{DIM}Waiting for first result...{RESET}")
+
+    sys.stdout.write(CURSOR_HOME + CLEAR_SCREEN + "\n".join(lines))
+    sys.stdout.flush()
+
+
+def get_adaptive_timeout_unlocked():
+    if not latencies:
+        return 2.5
+    sorted_lat = sorted(list(latencies))
+    median = sorted_lat[len(sorted_lat) // 2]
+    return max(0.6, min(2.5, (median / 1000) * 1.5))
+
+
+def check_ip(ip: str, out_handle, prog_handle, output_path):
+    global checked_count, success_count, block_count
     if stop_requested: return
 
     timeout = get_adaptive_timeout()
@@ -106,22 +174,27 @@ def check_ip(ip: str, out_handle, prog_handle):
 
     with lock:
         checked_count += 1
+        if success:
+            success_count += 1
+        else:
+            block_count += 1
+
         # Update subnet weights in memory
-        for cidr in local_weights:
-            if ipaddress.ip_address(ip) in ipaddress.ip_network(cidr):
+        ip_addr = ipaddress.ip_address(ip)
+        for cidr, network in parsed_subnets:
+            if ip_addr in network:
                 if success:
                     local_weights[cidr] = round(local_weights[cidr] + (speed_kbps / 100.0), 3)
                 else:
                     local_weights[cidr] = round(max(0.1, local_weights[cidr] * 0.9), 3)
                 break
 
-        percent = (checked_count / total_ips) * 100.0
-        color = GREEN if success else RED
-        status = "WORKS" if success else "BLOCK"
-
-        # Display: Changed :>4.0f to :>6.2f for float precision on screen
-        print(
-            f"{color}[{status}] {ip:<15} | {percent:>5.1f}% | T: {timeout:.2f}s | {ttlb:>6.1f}ms | {speed_kbps:>6.2f}kbps{RESET}")
+        recent_results.append({
+            "ip": ip,
+            "success": success,
+            "ttlb": ttlb,
+            "speed": speed_kbps,
+        })
 
         prog_handle.write(f"{ip}\n")
         prog_handle.flush()
@@ -129,15 +202,17 @@ def check_ip(ip: str, out_handle, prog_handle):
             # Saving: Storing as float in the text file for the sorter
             out_handle.write(f"{ip} | {ttlb:.1f}ms | {speed_kbps:.2f}kbps\n")
             out_handle.flush()
+        render_dashboard_locked(output_path)
 
 
 def main():
-    global total_ips, checked_count, local_weights
+    global total_ips, checked_count, local_weights, parsed_subnets
 
     # Load subnets into memory at start
     try:
         with open(SUBNETS_FILE, "r") as f:
             local_weights = json.load(f)
+        parsed_subnets = [(cidr, ipaddress.ip_network(cidr)) for cidr in local_weights]
     except FileNotFoundError:
         print(f"{RED}Error: {SUBNETS_FILE} not found!{RESET}")
         return
@@ -165,14 +240,18 @@ def main():
     checked_count = total_ips - len(remaining_ips)
 
     output_path = f"working_{datetime.now().strftime('%H-%M')}.txt"
+    print(HIDE_CURSOR + CLEAR_SCREEN, end="")
     with open(output_path, "a") as out_h, open(PROGRESS_FILE, "a") as prog_h:
+        with lock:
+            render_dashboard_locked(output_path)
         with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
             for ip in remaining_ips:
                 if stop_requested: break
-                executor.submit(check_ip, ip, out_h, prog_h)
+                executor.submit(check_ip, ip, out_h, prog_h, output_path)
 
     # Final save after completion
     save_weights_to_disk()
+    print(f"{SHOW_CURSOR}{GREEN}Done. Results written to {output_path}.{RESET}")
 
 
 if __name__ == "__main__":
