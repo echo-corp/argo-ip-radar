@@ -6,6 +6,12 @@ CONFIG_FILE = "subnets.json"
 TOTAL_IPS_TO_GENERATE = 10000
 
 
+def get_subnet_weight(value):
+    if isinstance(value, dict):
+        return float(value.get("weight", 0.1))
+    return float(value)
+
+
 def generate_weighted_ips():
     try:
         with open(CONFIG_FILE, 'r') as f:
@@ -15,7 +21,7 @@ def generate_weighted_ips():
         return
 
     subnets = list(subnet_data.keys())
-    weights = list(subnet_data.values())
+    weights = [get_subnet_weight(value) for value in subnet_data.values()]
 
     # Select which subnets to draw from based on their weight
     chosen_subnets = random.choices(subnets, weights=weights, k=TOTAL_IPS_TO_GENERATE)

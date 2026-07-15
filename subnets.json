@@ -1,17 +1,92 @@
 {
-  "173.245.48.0/20": 0.1,
-  "103.21.244.0/22": 0.1,
-  "103.22.200.0/22": 0.1,
-  "103.31.4.0/22": 0.1,
-  "141.101.64.0/18": 0.1,
-  "108.162.192.0/18": 0.1,
-  "190.93.240.0/20": 0.1,
-  "188.114.96.0/20": 0.1,
-  "197.234.240.0/22": 0.1,
-  "198.41.128.0/17": 0.1,
-  "162.158.0.0/15": 0.1,
-  "104.16.0.0/13": 0.1,
-  "104.24.0.0/14": 0.1,
-  "172.64.0.0/13": 0.1,
-  "131.0.72.0/22": 0.1
+  "173.245.48.0/20": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "103.21.244.0/22": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "103.22.200.0/22": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "103.31.4.0/22": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "141.101.64.0/18": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "108.162.192.0/18": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "190.93.240.0/20": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "188.114.96.0/20": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "197.234.240.0/22": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "198.41.128.0/17": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "162.158.0.0/15": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "104.16.0.0/13": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "104.24.0.0/14": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "172.64.0.0/13": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  },
+  "131.0.72.0/22": {
+    "weight": 0.1,
+    "success_count": 0,
+    "fail_count": 0,
+    "avg_speed": 0.0
+  }
 }

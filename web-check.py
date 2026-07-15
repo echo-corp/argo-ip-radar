@@ -43,8 +43,8 @@ success_count = 0
 block_count = 0
 latencies = deque(maxlen=15)
 recent_results = deque(maxlen=RECENT_RESULTS_LIMIT)
-# Buffer for weights to avoid constant disk writes
-local_weights = {}
+# Buffer for subnet stats to avoid constant disk writes
+subnet_stats = {}
 parsed_subnets = []
 
 shared_context = ssl.create_default_context()
@@ -52,16 +52,53 @@ shared_context.check_hostname = False
 shared_context.verify_mode = ssl.CERT_NONE
 
 
+def normalize_subnet_stats(raw_data):
+    """Accepts old float weights and new stat objects."""
+    normalized = {}
+    for cidr, value in raw_data.items():
+        if isinstance(value, dict):
+            normalized[cidr] = {
+                "weight": round(float(value.get("weight", 0.1)), 3),
+                "success_count": int(value.get("success_count", 0)),
+                "fail_count": int(value.get("fail_count", 0)),
+                "avg_speed": round(float(value.get("avg_speed", 0.0)), 3),
+            }
+        else:
+            normalized[cidr] = {
+                "weight": round(float(value), 3),
+                "success_count": 0,
+                "fail_count": 0,
+                "avg_speed": 0.0,
+            }
+    return normalized
+
+
+def record_subnet_result(cidr, success, speed_kbps):
+    stats = subnet_stats[cidr]
+    if success:
+        previous_count = stats["success_count"]
+        next_count = previous_count + 1
+        stats["success_count"] = next_count
+        stats["avg_speed"] = round(
+            ((stats["avg_speed"] * previous_count) + speed_kbps) / next_count,
+            3,
+        )
+        stats["weight"] = round(stats["weight"] + (speed_kbps / 100.0), 3)
+    else:
+        stats["fail_count"] += 1
+        stats["weight"] = round(max(0.1, stats["weight"] * 0.9), 3)
+
+
 def save_weights_to_disk():
-    """Writes the final memory-buffered weights back to subnets.json."""
-    if not local_weights: return
+    """Writes the final memory-buffered subnet stats back to subnets.json."""
+    if not subnet_stats: return
     with lock:
         try:
-            print(f"{SHOW_CURSOR}\n{YELLOW}[!] Saving updated subnet weights to {SUBNETS_FILE}...{RESET}")
+            print(f"{SHOW_CURSOR}\n{YELLOW}[!] Saving updated subnet stats to {SUBNETS_FILE}...{RESET}")
             with open(SUBNETS_FILE, "w") as f:
-                json.dump(local_weights, f, indent=2)
+                json.dump(subnet_stats, f, indent=2)
         except Exception as e:
-            print(f"{RED}Error saving weights: {e}{RESET}")
+            print(f"{RED}Error saving subnet stats: {e}{RESET}")
 
 
 def signal_handler(sig, frame):
@@ -183,10 +220,7 @@ def check_ip(ip: str, out_handle, prog_handle, output_path):
         ip_addr = ipaddress.ip_address(ip)
         for cidr, network in parsed_subnets:
             if ip_addr in network:
-                if success:
-                    local_weights[cidr] = round(local_weights[cidr] + (speed_kbps / 100.0), 3)
-                else:
-                    local_weights[cidr] = round(max(0.1, local_weights[cidr] * 0.9), 3)
+                record_subnet_result(cidr, success, speed_kbps)
                 break
 
         recent_results.append({
@@ -206,13 +240,13 @@ def check_ip(ip: str, out_handle, prog_handle, output_path):
 
 
 def main():
-    global total_ips, checked_count, local_weights, parsed_subnets
+    global total_ips, checked_count, subnet_stats, parsed_subnets
 
     # Load subnets into memory at start
     try:
         with open(SUBNETS_FILE, "r") as f:
-            local_weights = json.load(f)
-        parsed_subnets = [(cidr, ipaddress.ip_network(cidr)) for cidr in local_weights]
+            subnet_stats = normalize_subnet_stats(json.load(f))
+        parsed_subnets = [(cidr, ipaddress.ip_network(cidr)) for cidr in subnet_stats]
     except FileNotFoundError:
         print(f"{RED}Error: {SUBNETS_FILE} not found!{RESET}")
         return
