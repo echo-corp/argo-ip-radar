@@ -54,10 +54,10 @@
     "avg_speed": 0.0
   },
   "198.41.128.0/17": {
-    "weight": 0.1,
-    "success_count": 0,
+    "weight": 0.141,
+    "success_count": 1,
     "fail_count": 0,
-    "avg_speed": 0.0
+    "avg_speed": 4.103
   },
   "162.158.0.0/15": {
     "weight": 0.1,
