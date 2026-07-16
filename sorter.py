@@ -2,6 +2,7 @@ import os
 import re
 
 # --- Configuration ---
+INPUT_DIR = "working_ips"
 INPUT_PREFIX = "working_"
 OUTPUT_FILE = "fastest_ips.txt"
 LATENCY_LIMIT = 800.0  # Ignore anything slower than 0.8 second
@@ -12,11 +13,14 @@ def analyze_ips():
     # Updated Pattern: "IP | Time | Speed"
     pattern = re.compile(r"([\d\.]+)\s*\|\s*([\d\.]+)ms\s*\|\s*([\d\.]+)kbps")
 
-    files = [f for f in os.listdir('.') if f.startswith(INPUT_PREFIX) and f.endswith('.txt')]
+    if not os.path.isdir(INPUT_DIR):
+        return
+
+    files = [f for f in os.listdir(INPUT_DIR) if f.startswith(INPUT_PREFIX) and f.endswith('.txt')]
     if not files: return
 
     for filename in files:
-        with open(filename, 'r') as f:
+        with open(os.path.join(INPUT_DIR, filename), 'r') as f:
             for line in f:
                 match = pattern.search(line)
                 if match:

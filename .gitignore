@@ -1,3 +1,9 @@
 .*.txt
 *.txt
 .idea/
+__pycache__/
+working_ips/
+ips.txt
+fastest_ips.txt
+.session_progress.txt
+.file_id.txt

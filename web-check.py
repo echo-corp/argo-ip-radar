@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 # --- Configuration ---
 IPS_FILE = "ips.txt"
 SUBNETS_FILE = "subnets.json"  # Your new "brain" file
+RESULTS_DIR = "working_ips"
 PROGRESS_FILE = ".session_progress.txt"
 ID_FILE = ".file_id.txt"
 DEFAULT_HOST = "cloudflare.com"
@@ -429,7 +430,8 @@ def main():
     remaining_ips = [ip for ip in all_ips if ip not in checked_ips]
     checked_count = total_ips - len(remaining_ips)
 
-    output_path = f"working_{datetime.now().strftime('%H-%M')}.txt"
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    output_path = os.path.join(RESULTS_DIR, f"working_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt")
     print(HIDE_CURSOR + CLEAR_SCREEN, end="")
     with open(output_path, "a") as out_h, open(PROGRESS_FILE, "a") as prog_h:
         with lock:
