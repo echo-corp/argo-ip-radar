@@ -27,6 +27,7 @@ DEFAULT_HOST = "cloudflare.com"
 DEFAULT_PATH = "/cdn-cgi/trace"
 MAX_THREADS = 10
 RECENT_RESULTS_LIMIT = 12
+TOP_RESULTS_LIMIT = 3
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MIN_SUBNET_WEIGHT = 0.1
 MAX_SUBNET_WEIGHT = 10.0
@@ -56,7 +57,7 @@ latency_total = 0.0
 speed_total = 0.0
 latencies = deque(maxlen=15)
 recent_results = deque(maxlen=RECENT_RESULTS_LIMIT)
-best_result = None
+top_results = []
 # Buffer for subnet stats to avoid constant disk writes
 subnet_stats = {}
 parsed_subnets = []
@@ -249,6 +250,16 @@ def get_fail_penalty(stats):
     return BASE_FAIL_PENALTY - extra_penalty
 
 
+def record_top_result(ip, ttlb, speed_kbps):
+    top_results.append({
+        "ip": ip,
+        "ttlb": ttlb,
+        "speed": speed_kbps,
+    })
+    top_results.sort(key=lambda item: (-item["speed"], item["ttlb"]))
+    del top_results[TOP_RESULTS_LIMIT:]
+
+
 def record_subnet_result(cidr, success, speed_kbps):
     stats = subnet_stats[cidr]
     if success:
@@ -295,11 +306,12 @@ def write_scan_summary(interrupted=False):
             "blocked_count": block_count,
             "avg_latency_ms": round(avg_latency, 3),
             "avg_speed_kbps": round(avg_speed, 3),
-            "best": best_result or {
+            "best": top_results[0] if top_results else {
                 "ip": None,
                 "ttlb": 0.0,
                 "speed": 0.0,
             },
+            "top_results": top_results,
             "target": {
                 "host": scanner_settings.get("host", DEFAULT_HOST),
                 "sni": scanner_settings.get("sni", DEFAULT_HOST),
@@ -368,9 +380,6 @@ def render_dashboard_locked(output_path):
     top_speeds = [item["speed"] for item in recent_results if item["success"]]
     latest_speed = top_speeds[-1] if top_speeds else 0.0
     latest_latency = next((item["ttlb"] for item in reversed(recent_results) if item["success"]), 0.0)
-    best_ip = best_result["ip"] if best_result else "-"
-    best_latency = best_result["ttlb"] if best_result else 0.0
-    best_speed = best_result["speed"] if best_result else 0.0
 
     lines = [
         f"{BOLD}{CYAN}argo-ip-radar{RESET}  {DIM}Ctrl+C saves subnet weights and exits{RESET}",
@@ -380,10 +389,23 @@ def render_dashboard_locked(output_path):
         f"Progress  [{bar}] {checked_count}/{total_ips} ({percent:5.1f}%)",
         f"Working   {GREEN}{success_count}{RESET}   Blocked {RED}{block_count}{RESET}   Timeout {timeout:.2f}s",
         f"Latest    {latest_latency:6.1f}ms   {latest_speed:6.2f}kbps",
-        f"{PINK}Best      {best_latency:6.1f}ms   {best_speed:6.2f}kbps   {best_ip:<15}{RESET}",
+        f"{PINK}Top IPs{RESET}",
+    ]
+
+    for index in range(1, TOP_RESULTS_LIMIT + 1):
+        if index <= len(top_results):
+            item = top_results[index - 1]
+            lines.append(
+                f"{PINK}#{index:<2}      {item['ttlb']:6.1f}ms   {item['speed']:6.2f}kbps   "
+                f"{item['ip']:<15}{RESET}"
+            )
+        else:
+            lines.append(f"{PINK}#{index:<2}       0.0ms     0.00kbps   -{RESET}")
+
+    lines.extend([
         "",
         f"{BOLD}Recent results{RESET}",
-    ]
+    ])
 
     if recent_results:
         for item in reversed(recent_results):
@@ -413,7 +435,7 @@ def get_adaptive_timeout_unlocked():
 
 
 def check_ip(ip: str, out_handle, prog_handle, output_path):
-    global checked_count, success_count, block_count, best_result, latency_total, speed_total
+    global checked_count, success_count, block_count, latency_total, speed_total
     if stop_requested: return
 
     timeout = get_adaptive_timeout()
@@ -458,16 +480,7 @@ def check_ip(ip: str, out_handle, prog_handle, output_path):
             success_count += 1
             latency_total += ttlb
             speed_total += speed_kbps
-            if (
-                best_result is None
-                or speed_kbps > best_result["speed"]
-                or (speed_kbps == best_result["speed"] and ttlb < best_result["ttlb"])
-            ):
-                best_result = {
-                    "ip": ip,
-                    "ttlb": ttlb,
-                    "speed": speed_kbps,
-                }
+            record_top_result(ip, ttlb, speed_kbps)
         else:
             block_count += 1
 
