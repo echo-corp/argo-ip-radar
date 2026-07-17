@@ -273,7 +273,7 @@ def render_dashboard_locked(output_path):
         "",
         f"Progress  [{bar}] {checked_count}/{total_ips} ({percent:5.1f}%)",
         f"Working   {GREEN}{success_count}{RESET}   Blocked {RED}{block_count}{RESET}   Timeout {timeout:.2f}s",
-        f"Latest    {latest_latency:6.1f}ms   {latest_speed:6.2f}kbps   Output {output_path}",
+        f"Latest    {latest_latency:6.1f}ms   {latest_speed:6.2f}kbps",
         f"{PINK}Best      {best_latency:6.1f}ms   {best_speed:6.2f}kbps   {best_ip:<15}{RESET}",
         "",
         f"{BOLD}Recent results{RESET}",
@@ -289,7 +289,8 @@ def render_dashboard_locked(output_path):
             )
     else:
         lines.append(f"{DIM}Waiting for first result...{RESET}")
-
+    
+    lines.append(f"\nOutput {output_path}")
     sys.stdout.write(CURSOR_HOME + CLEAR_SCREEN + "\n".join(lines))
     sys.stdout.flush()
 
