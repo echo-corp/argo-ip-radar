@@ -28,6 +28,11 @@ DEFAULT_PATH = "/cdn-cgi/trace"
 MAX_THREADS = 10
 RECENT_RESULTS_LIMIT = 12
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+MIN_SUBNET_WEIGHT = 0.1
+MAX_SUBNET_WEIGHT = 10.0
+BASE_FAIL_PENALTY = 0.9
+HIGH_FAIL_RATE_THRESHOLD = 0.7
+HIGH_FAIL_RATE_MIN_SAMPLES = 5
 
 # --- Colors ---
 GREEN, RED, CYAN, YELLOW, PINK, RESET = "\033[92m", "\033[91m", "\033[96m", "\033[93m", "\033[95m", "\033[0m"
@@ -206,25 +211,42 @@ def validate_ws_upgrade(resp_data, ws_key):
     return True, "ws-101"
 
 
+def clamp_subnet_weight(weight):
+    return round(max(MIN_SUBNET_WEIGHT, min(MAX_SUBNET_WEIGHT, weight)), 3)
+
+
 def normalize_subnet_stats(raw_data):
     """Accepts old float weights and new stat objects."""
     normalized = {}
     for cidr, value in raw_data.items():
         if isinstance(value, dict):
             normalized[cidr] = {
-                "weight": round(float(value.get("weight", 0.1)), 3),
+                "weight": clamp_subnet_weight(float(value.get("weight", MIN_SUBNET_WEIGHT))),
                 "success_count": int(value.get("success_count", 0)),
                 "fail_count": int(value.get("fail_count", 0)),
                 "avg_speed": round(float(value.get("avg_speed", 0.0)), 3),
             }
         else:
             normalized[cidr] = {
-                "weight": round(float(value), 3),
+                "weight": clamp_subnet_weight(float(value)),
                 "success_count": 0,
                 "fail_count": 0,
                 "avg_speed": 0.0,
             }
     return normalized
+
+
+def get_fail_penalty(stats):
+    total = stats["success_count"] + stats["fail_count"]
+    if total < HIGH_FAIL_RATE_MIN_SAMPLES:
+        return BASE_FAIL_PENALTY
+
+    fail_rate = stats["fail_count"] / total
+    if fail_rate < HIGH_FAIL_RATE_THRESHOLD:
+        return BASE_FAIL_PENALTY
+
+    extra_penalty = min(0.25, (fail_rate - HIGH_FAIL_RATE_THRESHOLD) * 0.5)
+    return BASE_FAIL_PENALTY - extra_penalty
 
 
 def record_subnet_result(cidr, success, speed_kbps):
@@ -237,10 +259,10 @@ def record_subnet_result(cidr, success, speed_kbps):
             ((stats["avg_speed"] * previous_count) + speed_kbps) / next_count,
             3,
         )
-        stats["weight"] = round(stats["weight"] + (speed_kbps / 100.0), 3)
+        stats["weight"] = clamp_subnet_weight(stats["weight"] + (speed_kbps / 100.0))
     else:
         stats["fail_count"] += 1
-        stats["weight"] = round(max(0.1, stats["weight"] * 0.9), 3)
+        stats["weight"] = clamp_subnet_weight(stats["weight"] * get_fail_penalty(stats))
 
 
 def save_weights_to_disk():
