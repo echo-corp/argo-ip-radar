@@ -303,7 +303,7 @@ def check_ip(ip: str, out_handle, prog_handle, output_path):
 
     timeout = get_adaptive_timeout()
     start_time = time.time()
-    success, speed_kbps, ttlb, reason = False, 0.0, 0.0, "connect-failed"
+    success, speed_kbps, ttlb, reason = False, 0.0, 0.0, "conn-fail"
 
     try:
         with closing(socket.create_connection((ip, 443), timeout=timeout)) as sock:
@@ -335,7 +335,7 @@ def check_ip(ip: str, out_handle, prog_handle, output_path):
     except ssl.SSLError:
         reason = "tls-failed"
     except OSError:
-        reason = "connect-failed"
+        reason = "conn-fail"
 
     with lock:
         checked_count += 1
