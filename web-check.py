@@ -42,11 +42,13 @@ BOLD, DIM, CLEAR_SCREEN, CURSOR_HOME, HIDE_CURSOR, SHOW_CURSOR = (
 
 # --- Global State ---
 stop_requested = False
-lock = threading.Lock()
+lock = threading.RLock()
 checked_count = 0
 total_ips = 0
 success_count = 0
 block_count = 0
+latency_total = 0.0
+speed_total = 0.0
 latencies = deque(maxlen=15)
 recent_results = deque(maxlen=RECENT_RESULTS_LIMIT)
 best_result = None
@@ -61,6 +63,9 @@ runtime_settings = {
     "recent": RECENT_RESULTS_LIMIT,
     "no_color": False,
 }
+scan_started_at = None
+scan_output_path = None
+scan_summary_path = None
 
 shared_context = None
 
@@ -250,11 +255,60 @@ def save_weights_to_disk():
             print(f"{RED}Error saving subnet stats: {e}{RESET}")
 
 
+def write_scan_summary(interrupted=False):
+    if not scan_summary_path:
+        return
+
+    with lock:
+        finished_at = datetime.now()
+        avg_latency = latency_total / success_count if success_count else 0.0
+        avg_speed = speed_total / success_count if success_count else 0.0
+        summary = {
+            "started_at": scan_started_at.isoformat(timespec="seconds") if scan_started_at else None,
+            "finished_at": finished_at.isoformat(timespec="seconds"),
+            "interrupted": interrupted,
+            "total_ips": total_ips,
+            "checked_count": checked_count,
+            "success_count": success_count,
+            "blocked_count": block_count,
+            "avg_latency_ms": round(avg_latency, 3),
+            "avg_speed_kbps": round(avg_speed, 3),
+            "best": best_result or {
+                "ip": None,
+                "ttlb": 0.0,
+                "speed": 0.0,
+            },
+            "target": {
+                "host": scanner_settings.get("host", DEFAULT_HOST),
+                "sni": scanner_settings.get("sni", DEFAULT_HOST),
+                "path": scanner_settings.get("path", DEFAULT_PATH),
+                "alpn": scanner_settings.get("alpn", []),
+                "insecure": scanner_settings.get("insecure", True),
+            },
+            "runtime": {
+                "threads": runtime_settings["threads"],
+                "timeout_min": runtime_settings["timeout_min"],
+                "timeout_max": runtime_settings["timeout_max"],
+                "recent": runtime_settings["recent"],
+                "no_color": runtime_settings["no_color"],
+            },
+            "output_file": scan_output_path,
+            "summary_file": scan_summary_path,
+        }
+
+    try:
+        with open(scan_summary_path, "w") as f:
+            json.dump(summary, f, indent=2)
+    except Exception as e:
+        print(f"{RED}Error saving scan summary: {e}{RESET}")
+
+
 def signal_handler(sig, frame):
     global stop_requested
     stop_requested = True
     # Final save on interrupt
     save_weights_to_disk()
+    write_scan_summary(interrupted=True)
     sys.exit(0)
 
 
@@ -337,7 +391,7 @@ def get_adaptive_timeout_unlocked():
 
 
 def check_ip(ip: str, out_handle, prog_handle, output_path):
-    global checked_count, success_count, block_count, best_result
+    global checked_count, success_count, block_count, best_result, latency_total, speed_total
     if stop_requested: return
 
     timeout = get_adaptive_timeout()
@@ -380,6 +434,8 @@ def check_ip(ip: str, out_handle, prog_handle, output_path):
         checked_count += 1
         if success:
             success_count += 1
+            latency_total += ttlb
+            speed_total += speed_kbps
             if (
                 best_result is None
                 or speed_kbps > best_result["speed"]
@@ -448,6 +504,7 @@ def parse_args():
 
 def main():
     global total_ips, checked_count, subnet_stats, parsed_subnets, scanner_settings, shared_context, recent_results
+    global scan_started_at, scan_output_path, scan_summary_path
 
     args = parse_args()
     try:
@@ -499,7 +556,12 @@ def main():
     checked_count = total_ips - len(remaining_ips)
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    output_path = os.path.join(RESULTS_DIR, f"{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt")
+    scan_started_at = datetime.now()
+    output_stem = scan_started_at.strftime('%Y-%m-%d_%H-%M')
+    output_path = os.path.join(RESULTS_DIR, f"{output_stem}.txt")
+    summary_path = os.path.join(RESULTS_DIR, f"{output_stem}_summary.json")
+    scan_output_path = output_path
+    scan_summary_path = summary_path
     print(HIDE_CURSOR + CLEAR_SCREEN, end="")
     with open(output_path, "a") as out_h, open(PROGRESS_FILE, "a") as prog_h:
         with lock:
@@ -511,6 +573,7 @@ def main():
 
     # Final save after completion
     save_weights_to_disk()
+    write_scan_summary(interrupted=False)
     print(f"{SHOW_CURSOR}{GREEN}Done. Results written to {output_path}.{RESET}")
 
 
