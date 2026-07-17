@@ -30,7 +30,7 @@ RECENT_RESULTS_LIMIT = 12
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 # --- Colors ---
-GREEN, RED, CYAN, YELLOW, RESET = "\033[92m", "\033[91m", "\033[96m", "\033[93m", "\033[0m"
+GREEN, RED, CYAN, YELLOW, PINK, RESET = "\033[92m", "\033[91m", "\033[96m", "\033[93m", "\033[95m", "\033[0m"
 BOLD, DIM, CLEAR_SCREEN, CURSOR_HOME, HIDE_CURSOR, SHOW_CURSOR = (
     "\033[1m",
     "\033[2m",
@@ -49,6 +49,7 @@ success_count = 0
 block_count = 0
 latencies = deque(maxlen=15)
 recent_results = deque(maxlen=RECENT_RESULTS_LIMIT)
+best_result = None
 # Buffer for subnet stats to avoid constant disk writes
 subnet_stats = {}
 parsed_subnets = []
@@ -261,6 +262,9 @@ def render_dashboard_locked(output_path):
     top_speeds = [item["speed"] for item in recent_results if item["success"]]
     latest_speed = top_speeds[-1] if top_speeds else 0.0
     latest_latency = next((item["ttlb"] for item in reversed(recent_results) if item["success"]), 0.0)
+    best_ip = best_result["ip"] if best_result else "-"
+    best_latency = best_result["ttlb"] if best_result else 0.0
+    best_speed = best_result["speed"] if best_result else 0.0
 
     lines = [
         f"{BOLD}{CYAN}argo-ip-radar{RESET}  {DIM}Ctrl+C saves subnet weights and exits{RESET}",
@@ -270,6 +274,7 @@ def render_dashboard_locked(output_path):
         f"Progress  [{bar}] {checked_count}/{total_ips} ({percent:5.1f}%)",
         f"Working   {GREEN}{success_count}{RESET}   Blocked {RED}{block_count}{RESET}   Timeout {timeout:.2f}s",
         f"Latest    {latest_latency:6.1f}ms   {latest_speed:6.2f}kbps   Output {output_path}",
+        f"{PINK}Best      {best_latency:6.1f}ms   {best_speed:6.2f}kbps   {best_ip:<15}{RESET}",
         "",
         f"{BOLD}Recent results{RESET}",
     ]
@@ -298,7 +303,7 @@ def get_adaptive_timeout_unlocked():
 
 
 def check_ip(ip: str, out_handle, prog_handle, output_path):
-    global checked_count, success_count, block_count
+    global checked_count, success_count, block_count, best_result
     if stop_requested: return
 
     timeout = get_adaptive_timeout()
@@ -341,6 +346,16 @@ def check_ip(ip: str, out_handle, prog_handle, output_path):
         checked_count += 1
         if success:
             success_count += 1
+            if (
+                best_result is None
+                or speed_kbps > best_result["speed"]
+                or (speed_kbps == best_result["speed"] and ttlb < best_result["ttlb"])
+            ):
+                best_result = {
+                    "ip": ip,
+                    "ttlb": ttlb,
+                    "speed": speed_kbps,
+                }
         else:
             block_count += 1
 
