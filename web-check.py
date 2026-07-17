@@ -54,8 +54,35 @@ best_result = None
 subnet_stats = {}
 parsed_subnets = []
 scanner_settings = {}
+runtime_settings = {
+    "threads": MAX_THREADS,
+    "timeout_min": 0.6,
+    "timeout_max": 2.5,
+    "recent": RECENT_RESULTS_LIMIT,
+    "no_color": False,
+}
 
 shared_context = None
+
+
+def positive_int(value):
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return parsed
+
+
+def positive_float(value):
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return parsed
+
+
+def disable_colors():
+    global GREEN, RED, CYAN, YELLOW, PINK, RESET, BOLD, DIM, CLEAR_SCREEN, CURSOR_HOME, HIDE_CURSOR, SHOW_CURSOR
+    GREEN = RED = CYAN = YELLOW = PINK = RESET = ""
+    BOLD = DIM = CLEAR_SCREEN = CURSOR_HOME = HIDE_CURSOR = SHOW_CURSOR = ""
 
 
 def parse_vless_config(raw_config):
@@ -236,10 +263,13 @@ signal.signal(signal.SIGINT, signal_handler)
 
 def get_adaptive_timeout():
     with lock:
-        if not latencies: return 2.5
+        if not latencies: return runtime_settings["timeout_max"]
         sorted_lat = sorted(list(latencies))
         median = sorted_lat[len(sorted_lat) // 2]
-        return max(0.6, min(2.5, (median / 1000) * 1.5))
+        return max(
+            runtime_settings["timeout_min"],
+            min(runtime_settings["timeout_max"], (median / 1000) * 1.5),
+        )
 
 
 def format_bar(complete, total, width):
@@ -297,10 +327,13 @@ def render_dashboard_locked(output_path):
 
 def get_adaptive_timeout_unlocked():
     if not latencies:
-        return 2.5
+        return runtime_settings["timeout_max"]
     sorted_lat = sorted(list(latencies))
     median = sorted_lat[len(sorted_lat) // 2]
-    return max(0.6, min(2.5, (median / 1000) * 1.5))
+    return max(
+        runtime_settings["timeout_min"],
+        min(runtime_settings["timeout_max"], (median / 1000) * 1.5),
+    )
 
 
 def check_ip(ip: str, out_handle, prog_handle, output_path):
@@ -397,22 +430,41 @@ def parse_args():
     parser.add_argument("--sni", help="Override TLS SNI.")
     parser.add_argument("--path", help="Override WebSocket path, for example /config.")
     parser.add_argument("--alpn", help="Comma-separated TLS ALPN list, for example h2,http/1.1.")
+    parser.add_argument("--threads", type=positive_int, default=MAX_THREADS)
+    parser.add_argument("--timeout-min", type=positive_float, default=0.6)
+    parser.add_argument("--timeout-max", type=positive_float, default=2.5)
+    parser.add_argument("--recent", type=positive_int, default=RECENT_RESULTS_LIMIT)
+    parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors and screen-control codes.")
     parser.add_argument(
         "--insecure",
         action="store_true",
         help="Disable certificate validation. Useful when scanning direct Cloudflare IPs.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.timeout_min > args.timeout_max:
+        parser.error("--timeout-min must be less than or equal to --timeout-max")
+    return args
 
 
 def main():
-    global total_ips, checked_count, subnet_stats, parsed_subnets, scanner_settings, shared_context
+    global total_ips, checked_count, subnet_stats, parsed_subnets, scanner_settings, shared_context, recent_results
 
+    args = parse_args()
     try:
-        scanner_settings = build_settings(parse_args())
+        scanner_settings = build_settings(args)
     except ValueError as exc:
         print(f"{RED}Error: {exc}{RESET}")
         return
+    runtime_settings.update({
+        "threads": args.threads,
+        "timeout_min": args.timeout_min,
+        "timeout_max": args.timeout_max,
+        "recent": args.recent,
+        "no_color": args.no_color,
+    })
+    recent_results = deque(maxlen=args.recent)
+    if args.no_color:
+        disable_colors()
     shared_context = create_tls_context(scanner_settings)
 
     # Load subnets into memory at start
@@ -452,7 +504,7 @@ def main():
     with open(output_path, "a") as out_h, open(PROGRESS_FILE, "a") as prog_h:
         with lock:
             render_dashboard_locked(output_path)
-        with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        with ThreadPoolExecutor(max_workers=runtime_settings["threads"]) as executor:
             for ip in remaining_ips:
                 if stop_requested: break
                 executor.submit(check_ip, ip, out_h, prog_h, output_path)
