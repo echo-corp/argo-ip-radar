@@ -1,0 +1,21 @@
+argo-ip-radar  Ctrl+C saves subnet weights and exits
+Target    tunnel.example.workers.dev/ws SNI tunnel.example.workers.dev
+
+Progress  [###############-----------------------------------] 3184/10000 ( 31.8%)
+Working   27   Blocked 3157   Timeout 0.60s
+Latest     214.6ms   486.30kbps
+Top IPs
+#1        214.6ms   486.30kbps   104.17.76.8    
+#2        268.1ms   402.55kbps   188.114.107.78 
+#3        331.9ms   318.74kbps   162.159.79.202 
+
+Recent results
+[WORKS] 104.17.76.8       214.6ms   486.30kbps  ws-101
+[BLOCK] 190.93.252.51     886.4ms     0.00kbps  bad-ws-upgrade
+[WORKS] 188.114.107.78    268.1ms   402.55kbps  ws-101
+[BLOCK] 103.22.203.146      0.0ms     0.00kbps  conn-fail
+[WORKS] 162.159.79.202    331.9ms   318.74kbps  ws-101
+[BLOCK] 104.21.8.240     1503.2ms     0.00kbps  http-403
+[BLOCK] 172.67.142.19       0.0ms     0.00kbps  timeout
+
+Output results/2026-09-20_14-32.txt
