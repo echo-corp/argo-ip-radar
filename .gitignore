@@ -7,3 +7,6 @@ ips.txt
 fastest_ips.txt
 .session_progress.txt
 .file_id.txt
+
+# Keep documentation assets
+!docs/*.txt

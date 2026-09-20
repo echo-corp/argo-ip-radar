@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="725" height="511" viewBox="0 0 725 511" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" role="img" aria-label="argo-ip-radar terminal dashboard">
+<rect width="725" height="511" rx="10" fill="#16161d"/>
+<rect width="725" height="30" rx="10" fill="#22222b"/>
+<rect y="20" width="725" height="10" fill="#22222b"/>
+<circle cx="20" cy="15" r="6" fill="#ff5f57"/>
+<circle cx="39" cy="15" r="6" fill="#febc2e"/>
+<circle cx="58" cy="15" r="6" fill="#28c840"/>
+<text x="362" y="20" fill="#8b8b96" font-size="12" text-anchor="middle">argo-ip-radar</text>
+<text><tspan x="18.0" y="44.0" fill="#22d3ee" font-weight="bold">argo-ip-radar</tspan><tspan x="127.2" y="44.0" fill="#d4d4d8">&#160;&#160;</tspan><tspan x="144.0" y="44.0" fill="#8b8b96">Ctrl+C&#160;saves&#160;subnet&#160;weights&#160;and&#160;exits</tspan></text>
+<text><tspan x="18.0" y="65.0" fill="#d4d4d8">Target&#160;&#160;&#160;&#160;tunnel.example.workers.dev/ws&#160;SNI&#160;tunnel.example.workers.dev</tspan></text>
+<text><tspan x="18.0" y="107.0" fill="#d4d4d8">Progress&#160;&#160;[###############-----------------------------------]&#160;3184/10000&#160;(&#160;31.8%)</tspan></text>
+<text><tspan x="18.0" y="128.0" fill="#d4d4d8">Working&#160;&#160;&#160;</tspan><tspan x="102.0" y="128.0" fill="#4ade80">27</tspan><tspan x="118.8" y="128.0" fill="#d4d4d8">&#160;&#160;&#160;Blocked&#160;</tspan><tspan x="211.2" y="128.0" fill="#f87171">3157</tspan><tspan x="244.8" y="128.0" fill="#d4d4d8">&#160;&#160;&#160;Timeout&#160;0.60s</tspan></text>
+<text><tspan x="18.0" y="149.0" fill="#d4d4d8">Latest&#160;&#160;&#160;&#160;&#160;214.6ms&#160;&#160;&#160;486.30kbps</tspan></text>
+<text><tspan x="18.0" y="170.0" fill="#f0abfc">Top&#160;IPs</tspan></text>
+<text><tspan x="18.0" y="191.0" fill="#f0abfc">#1&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;214.6ms&#160;&#160;&#160;486.30kbps&#160;&#160;&#160;104.17.76.8&#160;&#160;&#160;&#160;</tspan></text>
+<text><tspan x="18.0" y="212.0" fill="#f0abfc">#2&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;268.1ms&#160;&#160;&#160;402.55kbps&#160;&#160;&#160;188.114.107.78&#160;</tspan></text>
+<text><tspan x="18.0" y="233.0" fill="#f0abfc">#3&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;331.9ms&#160;&#160;&#160;318.74kbps&#160;&#160;&#160;162.159.79.202&#160;</tspan></text>
+<text><tspan x="18.0" y="275.0" fill="#d4d4d8" font-weight="bold">Recent&#160;results</tspan></text>
+<text><tspan x="18.0" y="296.0" fill="#4ade80">[WORKS]&#160;104.17.76.8&#160;&#160;&#160;&#160;</tspan><tspan x="211.2" y="296.0" fill="#d4d4d8">&#160;&#160;&#160;214.6ms&#160;&#160;&#160;486.30kbps&#160;&#160;ws-101</tspan></text>
+<text><tspan x="18.0" y="317.0" fill="#f87171">[BLOCK]&#160;190.93.252.51&#160;&#160;</tspan><tspan x="211.2" y="317.0" fill="#d4d4d8">&#160;&#160;&#160;886.4ms&#160;&#160;&#160;&#160;&#160;0.00kbps&#160;&#160;bad-ws-upgrade</tspan></text>
+<text><tspan x="18.0" y="338.0" fill="#4ade80">[WORKS]&#160;188.114.107.78&#160;</tspan><tspan x="211.2" y="338.0" fill="#d4d4d8">&#160;&#160;&#160;268.1ms&#160;&#160;&#160;402.55kbps&#160;&#160;ws-101</tspan></text>
+<text><tspan x="18.0" y="359.0" fill="#f87171">[BLOCK]&#160;103.22.203.146&#160;</tspan><tspan x="211.2" y="359.0" fill="#d4d4d8">&#160;&#160;&#160;&#160;&#160;0.0ms&#160;&#160;&#160;&#160;&#160;0.00kbps&#160;&#160;conn-fail</tspan></text>
+<text><tspan x="18.0" y="380.0" fill="#4ade80">[WORKS]&#160;162.159.79.202&#160;</tspan><tspan x="211.2" y="380.0" fill="#d4d4d8">&#160;&#160;&#160;331.9ms&#160;&#160;&#160;318.74kbps&#160;&#160;ws-101</tspan></text>
+<text><tspan x="18.0" y="401.0" fill="#f87171">[BLOCK]&#160;104.21.8.240&#160;&#160;&#160;</tspan><tspan x="211.2" y="401.0" fill="#d4d4d8">&#160;&#160;1503.2ms&#160;&#160;&#160;&#160;&#160;0.00kbps&#160;&#160;http-403</tspan></text>
+<text><tspan x="18.0" y="422.0" fill="#f87171">[BLOCK]&#160;172.67.142.19&#160;&#160;</tspan><tspan x="211.2" y="422.0" fill="#d4d4d8">&#160;&#160;&#160;&#160;&#160;0.0ms&#160;&#160;&#160;&#160;&#160;0.00kbps&#160;&#160;timeout</tspan></text>
+<text><tspan x="18.0" y="464.0" fill="#d4d4d8">Output&#160;results/2026-09-20_14-32.txt</tspan></text>
+</svg>
